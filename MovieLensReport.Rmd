@@ -7,22 +7,17 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+Introduction / Overview / Executive Summary
+# section that describes the dataset and summarizes the goal of the project and key steps that were performed
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+Methods / Analsysis
+# section that explains the process and techniques used, including data cleaning, data exploration and visualization, insights gained, and your modeling approach
 
-```{r cars}
-summary(cars)
-```
 
-## Including Plots
+Results
+# section that presents the modeling results and discusses the model performance
 
-You can also embed plots, for example:
 
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+Conclusion
+# section that gives a brief summary of the report, its limitations and future work
