@@ -66,7 +66,7 @@ rm(dl, ratings, movies, test_index, temp, movielens, removed)
 
 
 ##########################################################
-# Initial Data Analysis
+# Exploratory Data Analysis
 ##########################################################
 
 library(lubridate)
@@ -167,11 +167,24 @@ mod_edx %>%
   geom_smooth()
 # This has a clear effect as well
 
+# This may be nothing, but I am curious
 mod_edx %>%
   group_by(movieId) %>%
   summarize(title_length = str_length(title), mean_rating = mean(rating)) %>%
   ggplot(aes(x = title_length, y = mean_rating)) +
   geom_point()
+# Bizarrely enough, the longer a movie title is (or the greater number of alias it
+#  has) the higher it tends to be rated.This likely corresponds to movies that are
+#  translated tend to get additional titles, and movies that are translated likely
+#  performed well enough to justify it.
+# What is this movie with a title length of over 150 characters?
+mod_edx %>%
+  select(movieId, title) %>%
+  distinct() %>%
+  mutate(title_len = str_length(title)) %>%
+  top_n(5, title_len) %>%
+  arrange(desc(title_len))
+# Wild
 
 ##########################################################
 # Machine Learning to Make Predictions
@@ -243,7 +256,235 @@ movie_user_effect_rmse
 results <- results %>%
   add_row(method = "Movie + User Effect", RMSE = movie_user_effect_rmse)
 
+# Modeling the genre effect
+genre_avgs <- train_set %>%
+  left_join(movie_avgs, by = "movieId") %>%
+  left_join(user_avgs, by = "userId") %>%
+  group_by(genres) %>%
+  summarize(b_g = mean(rating - mu_hat - b_i - b_u))
+predicted_ratings <- test_set %>%
+  left_join(movie_avgs, by = "movieId") %>%
+  left_join(user_avgs, by = "userId") %>%
+  left_join(genre_avgs, by = "genres") %>%
+  mutate(pred = mu_hat + b_i + b_u + b_g) %>%
+  pull(pred)
+movie_user_genre_effect_rmse <- RMSE(predicted_ratings, test_set$rating)
+movie_user_genre_effect_rmse
+results <- results %>%
+  add_row(method = "Movie + User + Genres Effect", RMSE = movie_user_genre_effect_rmse)
 
+# Can we do better with the genre effect?
+train_set %>%
+  group_by(genres) %>%
+  tally()
+
+# Lets go with a slow approach that will take a lot of memory, but lets us 
+#  really dig into the genre effect.
+genre_avgs <- train_set %>%
+  left_join(movie_avgs, by = "movieId") %>%
+  left_join(user_avgs, by = "userId") %>%
+  separate_rows(genres, sep = "\\|") %>%
+  group_by(genres) %>%
+  summarize(b_g = mean(rating - mu_hat - b_i - b_u))
+
+b_g <- sapply(test_set$genres, function(genres) {
+  sum(genre_avgs$b_g[str_detect(genre_avgs$genres, genres)])
+}, simplify = TRUE)
+b_g <- unname(b_g)
+
+predicted_ratings <- test_set %>%
+  left_join(movie_avgs, by = "movieId") %>%
+  left_join(user_avgs, by = "userId") %>%
+  mutate(pred = mu_hat + b_i + b_u) %>%
+  pull(pred)
+predicted_ratings <- predicted_ratings + b_g
+movie_user_sep_genre_effect_rmse <- RMSE(predicted_ratings, test_set$rating)
+movie_user_sep_genre_effect_rmse
+results <- results %>%
+  add_row(method = "Movie + User + Separated Genres Effect", RMSE = movie_user_sep_genre_effect_rmse)
+
+# Modeling the date effect
+week_avgs <- train_set %>%
+  left_join(movie_avgs, by = "movieId") %>%
+  left_join(user_avgs, by = "userId") %>%
+  left_join(genre_avgs, by = "genres") %>%
+  mutate(week = round_date(as_datetime(timestamp - as.numeric(make_datetime(releaseYear))), unit = "week")) %>%
+  group_by(week) %>%
+  summarize(b_d = mean(rating - mu_hat - b_i - b_u - b_g), n = n())
+
+fit <- loess(week_avgs$b_d ~ as.numeric(week_avgs$week), weights = week_avgs$n, degree = 2)
+week_avgs <-
+  week_avgs %>%
+  mutate(d_ui = predict(fit))
+week_avgs %>%
+  ggplot() +
+  ylim(-0.5, 0.5) +
+  geom_point(aes(x = week, y = b_d), alpha = 0.1) + 
+  geom_line(aes(x = week, y = d_ui, color = "red"))
+
+predicted_ratings <- test_set %>%
+  left_join(movie_avgs, by = 'movieId') %>%
+  left_join(user_avgs, by = 'userId') %>%
+  left_join(genre_avgs, by = "genres") %>%
+  mutate(week = round_date(date, unit = "week")) %>%
+  left_join(week_avgs, by = "week") %>%
+  mutate(pred = mu_hat + b_i + b_u + b_g + d_ui) %>%
+  pull(pred)
+all_rmse <- RMSE(predicted_ratings, test_set$rating)
+all_rmse
+results <- results %>%
+  add_row(method = "All Included Effects", RMSE = all_rmse)
+
+
+## OTHERS, release year?
+year_avgs <- train_set %>%
+  left_join(movie_avgs, by = "movieId") %>%
+  left_join(user_avgs, by = "userId") %>%
+  left_join(genre_avgs, by = "genres") %>%
+  mutate(week = round_date(date, unit = "week")) %>%
+  left_join(week_avgs, by = "week") %>%
+  group_by(releaseYear) %>%
+  summarize(b_y = mean(rating - mu_hat - b_i - b_u - b_g - d_ui), n = n())
+
+year_avgs %>%
+  ggplot(aes(x = releaseYear, y = b_y)) +
+  geom_point()
+
+fit <- loess(year_avgs$b_y ~ as.numeric(year_avgs$releaseYear), degree = 2)
+year_avgs <- 
+  year_avgs %>%
+  mutate(y_ui = predict(fit))
+
+year_avgs %>%
+  ggplot() +
+  ylim(-0.1, 0.2) +
+  geom_point(aes(x = releaseYear, y = b_y)) + 
+  geom_line(aes(x = releaseYear, y = y_ui, color = "red"))
+
+predicted_ratings <- test_set %>%
+  left_join(movie_avgs, by = 'movieId') %>%
+  left_join(user_avgs, by = 'userId') %>%
+  left_join(genre_avgs, by = "genres") %>%
+  mutate(week = round_date(date, unit = "week")) %>%
+  left_join(week_avgs, by = "week") %>%
+  left_join(year_avgs, by = "releaseYear") %>%
+  mutate(pred = mu_hat + b_i + b_u + b_g + d_ui + y_ui) %>%
+  pull(pred)
+all_rmse <- RMSE(predicted_ratings, test_set$rating)
+all_rmse
+results <- results %>%
+  add_row(method = "All + releaseYear Effects", RMSE = all_rmse)
+    
+####
+# Regularization (From 34.9 in textbook)
+####
+
+lambdas <- seq(0, 50, 10)
+# 10
+lambdas <- seq(0, 10, .5)
+# 5
+lambdas <- seq(4.5, 5.5, 0.1)
+# 4.9, but no noticeable improvement
+
+rmses <- sapply(lambdas, function(l){
+  # Movie effect
+  b_i <- train_set %>%
+    group_by(movieId) %>%
+    summarize(b_i = sum(rating - mu_hat) / (n() + l))
+  
+  # User effect
+  b_u <- train_set %>%
+    left_join(b_i, by = 'movieId') %>%
+    group_by(userId) %>%
+    summarize(b_u = sum(rating - b_i - mu_hat) / (n() + l))
+  
+  predicted_ratings <-
+    test_set %>%
+    left_join(b_i, by = 'movieId') %>%
+    left_join(b_u, by = 'userId') %>%
+    mutate(pred = mu_hat + b_i + b_u) %>%
+    pull(pred)
+  
+  return(RMSE(predicted_ratings, test_set$rating))
+})
+min(rmses)
+lambdas[which.min(rmses)]
+qplot(lambdas, rmses)
+
+results <- results %>%
+  add_row(method = "Regularized Movie + User Effect", RMSE = min(rmses))
+
+
+lambdas <- seq(2, 6, 1)
+# 5
+lambdas <- seq(4.0, 5.0, .1)
+# 4.6
+lambdas <- c(4.6)
+rmses <- sapply(lambdas, function(l){
+  # Movie effect
+  b_i <- train_set %>%
+    group_by(movieId) %>%
+    summarize(b_i = sum(rating - mu_hat) / (n() + l))
+  
+  # User effect
+  b_u <- train_set %>%
+    left_join(b_i, by = 'movieId') %>%
+    group_by(userId) %>%
+    summarize(b_u = sum(rating - b_i - mu_hat) / (n() + l))
+  
+  # Genre effect
+  b_g <- train_set %>%
+    left_join(b_i, by = "movieId") %>%
+    left_join(b_u, by = "userId") %>%
+    group_by(genres) %>%
+    summarize(b_g = sum(rating - b_i - b_u - mu_hat) / (n() + l))
+  
+  # Date effect
+  d_ui <- train_set %>%
+    left_join(movie_avgs, by = "movieId") %>%
+    left_join(user_avgs, by = "userId") %>%
+    left_join(genre_avgs, by = "genres") %>%
+    mutate(week = round_date(date, unit = "week")) %>%
+    group_by(week) %>%
+    summarize(b_d = mean(rating - mu_hat - b_i - b_u - b_g), n = n())
+  
+  fit <- loess(d_ui$b_d ~ as.numeric(d_ui$week), weights = d_ui$n, degree = 2)
+  d_ui <-
+    d_ui %>%
+    mutate(d_ui = predict(fit))
+  
+  predicted_ratings <-
+    test_set %>%
+    left_join(b_i, by = 'movieId') %>%
+    left_join(b_u, by = 'userId') %>%
+    left_join(b_g, by = "genres") %>%
+    mutate(week = round_date(date, unit = "week")) %>%
+    left_join(d_ui, by = "week") %>%
+    mutate(pred = mu_hat + b_i + b_u + b_g + d_ui) %>%
+    pull(pred)
+  
+  predicted_ratings[predicted_ratings > 5] <- 5
+  predicted_ratings[predicted_ratings < 0.5] <- 0.5
+  
+  return(list(RMSE = RMSE(predicted_ratings, test_set$rating), predicted_ratings = predicted_ratings))
+})
+min(rmses[,1]$RMSE)
+lambdas[which.min(rmses[,1]$RMSE)]
+qplot(lambdas, rmses)
+results <- results %>%
+  add_row(method = "Regularized All Effects", RMSE = min(rmses))
+
+predicted_ratings <- rmses[,1]$predicted_ratings
+rounding_factor <- seq(0.24, 0.27, 0.0005)
+
+rounded <- sapply(rounding_factor, function(r){
+  base_prediction <- round(predicted_ratings)
+  dec <- predicted_ratings - base_prediction
+  base_prediction[dec > r] <- base_prediction[dec > r] + 0.5
+  base_prediction[dec < -r] <- base_prediction[dec < - r] - 0.5
+  return(RMSE(base_prediction, test_set$rating))
+})
+qplot(rounding_factor, rounded)
 
 # From textbook section 34.11 Matrix factorization
 # filter down to a smaller subset of the movies for speed and to capture most of info
@@ -260,22 +501,55 @@ y <- train_filtered %>%
   pivot_wider(names_from = "movieId", values_from = "rating") %>%
   as.matrix()
 
-# Add row and column names
-rownames(y) <- y[, 1]
-y <- y[, -1]
 
-movie_titles <- edx %>%
-  select(movieId, title) %>%
-  distinct()
-colnames(y) <- with(movie_titles, title[match(colnames(y), movieId)])
-y
 
-# convert values to residuals
-y <- sweep(y, 2, colMeans(y, na.rm = TRUE))
-y <- sweep(y, 1, rowMeans(y, na.rm = TRUE))
+###########################################################
+#FINAL TEST
+#
+lambda <- 4.5
+# Movie effect
+b_i <- train_set %>%
+  group_by(movieId) %>%
+  summarize(b_i = sum(rating - mu_hat) / (n() + lambda))
 
-# To compute decomposition, make residuals with NA equal to 0
-y[is.na(y)] <- 0
-#pca <- prcomp(y)
+# User effect
+b_u <- train_set %>%
+  left_join(b_i, by = 'movieId') %>%
+  group_by(userId) %>%
+  summarize(b_u = sum(rating - b_i - mu_hat) / (n() + lambda))
 
-qplot(1:nrow(x), pca$sdev, xlab = "PC")
+# Genre effect
+b_g <- train_set %>%
+  left_join(b_i, by = "movieId") %>%
+  left_join(b_u, by = "userId") %>%
+  group_by(genres) %>%
+  summarize(b_g = sum(rating - b_i - b_u - mu_hat) / (n() + lambda))
+
+# Date effect
+d_ui <- train_set %>%
+  left_join(movie_avgs, by = "movieId") %>%
+  left_join(user_avgs, by = "userId") %>%
+  left_join(genre_avgs, by = "genres") %>%
+  mutate(week = round_date(date, unit = "week")) %>%
+  group_by(week) %>%
+  summarize(b_d = mean(rating - mu_hat - b_i - b_u - b_g), n = n())
+
+fit <- loess(d_ui$b_d ~ as.numeric(d_ui$week), weights = d_ui$n, degree = 1)
+d_ui <-
+  d_ui %>%
+  mutate(d_ui = predict(fit))
+
+predicted_ratings <-
+  validation %>%
+  left_join(b_i, by = 'movieId') %>%
+  left_join(b_u, by = 'userId') %>%
+  left_join(b_g, by = "genres") %>%
+  mutate(week = round_date(as_datetime(timestamp), unit = "week")) %>%
+  left_join(d_ui, by = "week") %>%
+  mutate(pred = mu_hat + b_i + b_u + b_g + d_ui) %>%
+  pull(pred)
+
+predicted_ratings[predicted_ratings > 5] <- 5
+predicted_ratings[predicted_ratings < 0.5] <- 0.5
+
+RMSE(predicted_ratings, validation$rating)
