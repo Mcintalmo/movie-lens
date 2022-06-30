@@ -59,9 +59,11 @@ rm(dl, ratings, movies, test_index, temp, movielens, removed)
 ##########################################################
 
 # First, to reduce the amount of the above code that must be run when R crashes
-# Uncomment to save edx and validation data into external file
+# Uncomment the following line to save variables that take a long time to
+# generate into an external file
 #save(edx, validation, train_set, test_set, file = "edx.dat")
-# Uncomment to load edx and validation from external file
+
+# Uncomment to load previously saved data
 #load("edx.dat", verbose = TRUE)
 
 
@@ -69,6 +71,7 @@ rm(dl, ratings, movies, test_index, temp, movielens, removed)
 # Exploratory Data Analysis
 ##########################################################
 
+# For use of the Date object and some round_dates that will be used for weeks
 library(lubridate)
 # Get an idea for the data set to be analyzed.
 head(edx)
@@ -84,6 +87,9 @@ n_distinct(edx$title)
 # 10676
 n_distinct(edx$genres)
 # 797
+
+# Genres are currently a string divided by |'s. For now, just sepearate them
+#  into separate rows to count distinct genres. Save for use later.
 edx_genres_split <- edx %>%
   separate_rows(genres, sep = "\\|")
 n_distinct(edx_genres_split$genres)
@@ -107,7 +113,7 @@ pattern <- " \\(\\d{4}\\)$"
 edx <- edx %>%
   as_tibble() %>%
   mutate(release_year = str_extract(title, pattern),
-         release_year = str_remove_all(release_year, " \\(|\\)"),
+         release_year = str_remove_all(release_year, " \\(|\\)"), # remove space left-paren or right parent
          release_year = as.integer(release_year),
          title = str_remove(title, pattern))
 head(edx)
@@ -144,7 +150,7 @@ edx %>%
   group_by(userId) %>%
   summarize(n_ratings = n(), mean_rating = mean(rating)) %>%
   ggplot(aes(x = n_ratings, y = mean_rating)) +
-  geom_point(alpha = 0.1) +
+  geom_point(alpha = 0.05) +
   geom_smooth()
 # Interestingly, we see a regression towards the mean. Fewer ratings from users
 #  appear to mean they will rate movies higher. Those above ~ 1000 votes on average
@@ -271,6 +277,7 @@ naive_rmse <- RMSE(test_set$rating, mu_hat)
 naive_rmse
 # 1.059904
 
+# Save the results to a tibble to easily check if improvements are being made
 results <- tibble(method = "Average", RMSE = naive_rmse)
 
 # Modeling the movie effect
@@ -337,7 +344,8 @@ split_genre_avgs %>%
 # A different method for adding the genre effect is necessary here. Now, we want
 #  to check if the genre is present. If so, add the avg associated with that to
 #  the genre effect. Else, don't change it
-# Oroginal method for recombining genres
+
+###### Original method for recombining genres
 # x <- sapply(b_g$genres, function(g) {
 #   sum(split_genre_avgs$b_g[str_detect(split_genre_avgs$genres, g)])
 # }, simplify = TRUE)
@@ -352,6 +360,7 @@ split_genre_avgs %>%
 #   pull(pred)
 # predicted_ratings <- predicted_ratings + b_g
 
+#### NEW method for separaret genre scores into one combined score
 combined_genre_avgs <- train_set %>%
   distinct(genres) %>%
   mutate(b_g = map_dbl(genres, function(g){
@@ -384,6 +393,7 @@ week_avgs <- train_set %>%
   group_by(week) %>%
   summarize(b_d = mean(rating - mu_hat - b_i - b_u - b_g), n = n())
 
+# Add a fit, too, to see if it is any more effective
 fit <- loess(week_avgs$b_d ~ as.numeric(week_avgs$week), weights = week_avgs$n, degree = 2)
 week_avgs <-
   week_avgs %>%
@@ -394,6 +404,7 @@ week_avgs %>%
   geom_point(aes(x = week, y = b_d), alpha = 0.1) + 
   geom_line(aes(x = week, y = d_ui, color = "red"))
 
+# Only check without fit. Fits in general did not seem to results in better RMSE
 predicted_ratings <- test_set %>%
   left_join(movie_avgs, by = 'movieId') %>%
   left_join(user_avgs, by = 'userId') %>%
@@ -407,6 +418,8 @@ movie_user_genre_week_rmse
 results <- results %>%
   add_row(method = "Movie + User + Genre + Date Effect", RMSE = movie_user_genre_week_rmse)
 
+# Checking the years since release, since that had a compelling graph in the
+#  exploratory analysis.
 year_avgs <-
   train_set %>%
   left_join(movie_avgs, by = "movieId") %>%
@@ -532,8 +545,9 @@ predict_ratings <- function(l, pred_against = test_set, verbose = TRUE){
     pull(pred)
   
   # Clamping. Reduces RMSE, makes sense given the context of the problem
+  #  I checked both with and without clamping, clamping seems to reduce RMSE
   predicted_ratings[predicted_ratings > 5] <- 5
-  predicted_ratings[predicted_ratings < 0.5] <- 0.5
+  predicted_ratings[predicted_ratings < 1] <- 1
   
   RMSE <- RMSE(predicted_ratings, pred_against$rating)
   
@@ -543,6 +557,7 @@ predict_ratings <- function(l, pred_against = test_set, verbose = TRUE){
   return(predicted_ratings)
 }
 
+# Splitting up the lambda checks, since the above function takes a while to run
 lambdas <- seq(2, 6, 1)
 # 5
 lambdas <- seq(4.0, 6.0, 0.1)
@@ -559,6 +574,10 @@ qplot(lambdas, rmses)
 results <- results %>%
   add_row(method = "Regularized All Effects", RMSE = min(rmses))
 
+
+############################################################################
+# Testing of clamping values to 1, 1,5, 2, 2.5, 3, 3.5, 4, 4.5, 5
+# Generally found that this had a neutral to negative effect
 predicted_ratings <- rmses[,1]$predicted_ratings
 rounding_factor <- seq(0.2, 0.3, 0.01)
 
@@ -576,7 +595,7 @@ qplot(rounding_factor, rounded)
 ###########################################################
 #FINAL TEST
 #
-lambda <- 4.7
+lambda <- 4.5
 # Movie effect
 b_i <- train_set %>%
   group_by(movieId) %>%
@@ -635,9 +654,14 @@ predicted_ratings <-
   mutate(pred = mu_hat + b_i + b_u + b_g + b_d + b_y) %>%
   pull(pred)
 
+
 predicted_ratings[predicted_ratings > 5] <- 5
 predicted_ratings[predicted_ratings < 0.5] <- 0.5
 
 RMSE(predicted_ratings, validation$rating)
 # 0.8650716
+# OOFDA. Not there yet.
+# LATER NOTE: After completing the writeup, there were some bugs in the final
+#  model that were handled in the paper. See the paper for the final model used,'
+#  in which the target RMSE is acheived.
 rm(b_g, b_i, b_u, d_ui, fit)
