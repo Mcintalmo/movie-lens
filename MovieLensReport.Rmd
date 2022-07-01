@@ -400,33 +400,6 @@ Waiting to watch the movie after its release, waiting to review the movie. Regar
 smoother relationship and  deviation from the mean suggests it may be a stronger 
 variable with which to make predictions.
 
-### Movie Title Length vs Average Rating
-```{r}
-edx %>%
-  group_by(movieId) %>%
-  summarize(title_length = str_length(title), mean_rating = mean(rating)) %>%
-  ggplot(aes(x = title_length, y = mean_rating)) +
-  labs(title = "Movie Title Length vs Average Rating", 
-       x = "Number of Characters in Title",
-       y = "Average Rating") +
-  geom_point(alpha = 0.25)
-```
-Bizarrely enough, the longer a movie title is (or the greater number of alias it
-has) the higher it tends to be rated. This likely relates to that fact that
-movies that are
-translated tend to get additional titles, and movies that are translated likely
-performed well enough to justify it.
-
-What is this movie with a title length of over 150 characters?
-```{r}
-edx %>%
-  select(movieId, title) %>%
-  distinct() %>%
-  mutate(title_len = str_length(title)) %>%
-  top_n(5, title_len) %>%
-  arrange(desc(title_len))
-```
-
 # Results
 Now that the exploratory analysis is complete, lets look at the impact
 incorporating various effects (or biases) will have on the resulting RMSE.
