@@ -1,5 +1,6 @@
 ---
-title: "MovieLensReport"
+title: "MovieLens Report"
+author: "Alex McIntosh"
 output: pdf_document
 ---
 
@@ -18,23 +19,28 @@ knitr::opts_chunk$set(
 
 GroupLens, a social computing research organization at the University of
 Minnesota, created and shared the rating data sets from the MovieLens website
-(https://movielens.org). The data set presented in the analysis to follow
-includes 10 million user ratings. The raw data set is not that useful. A human
-could never look at that quantity of information and draw many valuable
+(https://movielens.org). 
+The data set presented in the analysis to follow
+includes 10 million user ratings. 
+The raw data set is not that useful. 
+A human can not look at that quantity of information and draw many valuable
 conclusions.
-However, through the application of data science there are
-many insights to be had and tools to be built For example, a movie recommendation
-system.
+However, through the application of data science insights may be gleaned and
+tools may be built. For example, a movie recommendation system.
 
 The goal of this projects is to develop a system that can predict how a user
-will rate a movie. The metric by which to measure success will be the Root Mean
-Squared Error, or RMSE, between how the model predicts a user will rate a movie 
-and how the user actually rated the movie. Success is considered to be a model 
+will rate a movie. 
+The metric by which to measure success will be the Root Mean
+Squared Error (RMSE) between how the model predicts a user will rate a movie 
+and how the user actually rated the movie. 
+Success is considered to be a model 
 that results in an RMSE of less than 0.86490.
 
-The key steps, to follow, are preparation, exploration, determination of the
-model, and validating the set to find the final RMSE. Preparing the data will
-involve downloading, cleaning, and tidying the data set. Exploring the data will 
+The key steps are preparation, exploration, determination of the
+model, and validating the set to find the final RMSE. 
+Preparing the data will
+involve downloading, cleaning, and tidying the data set.
+Exploring the data will 
 include stratifying the data to see what predictors can be easily picked out.
 Determining the model will require taking into account the massive size of the
 data set, as some methods will not be physically possible, and narrowing to
@@ -44,9 +50,10 @@ as a clean to set to test the model against.
 
 
 # Methods and Analysis
-The following analysis includes function from the tidyverse, caret, data.table,
-lubridate, gridExtra, and randomForest packages. Significant digits have been
-set to 5 to check proximity to the target RMSE, 0.86490.
+The following analysis includes functions from the tidyverse, caret, data.table,
+lubridate, gridExtra, and randomForest packages.
+Five significant digits are displays in order to check proximity to the target
+RMSE, 0.86490.
 ```{r, echo = FALSE, results = "hide"}
 library(tidyverse)
 library(caret)
@@ -59,17 +66,18 @@ options(digits = 5)
 
 ## Cleaning the Data
 The MovieLens data set must be downloaded from
-https://files.grouplens.org/datasets/movielens/ml-10m.zip .
+https://files.grouplens.org/datasets/movielens/ml-10m.zip.
 
 ```{r, results = "hide"}
 dl <- tempfile()
 download.file("https://files.grouplens.org/datasets/movielens/ml-10m.zip", dl)
 ```
 
-With the file the downloaded, a movies data frame will hold the information with
+With the file the downloaded, it must be parsed and cleaned for easier condensation.
+A movies data frame holds the information with
 columns: userId(int), movieId(int), rating(float), timestamp(int), title(string),
-genres(string, separated by |). Further manipulation of this dataset will occur
-later.
+genres(string, separated by |). 
+Further manipulation of this dataset will occur later.
 ```{r, results = "hide"}
 ratings <- fread(text = gsub("::", "\t", readLines(unzip(dl, "ml-10M100K/ratings.dat"))),
                  col.names = c("userId", "movieId", "rating", "timestamp"))
@@ -96,8 +104,8 @@ edx <- movielens[-test_index,]
 temp <- movielens[test_index,]
 ```
 
-The following code ensures that userId and movieId in validation set are also in 
-edx set.
+The following code ensures that userId and movieId in validation set are also
+present in the edx data set.
 This is important so that we have the ability to make predictions on all 
 userId's and movieId's in the validation set.
 ```{r, results = "hide"}
@@ -115,19 +123,17 @@ spike up to 7 GB of RAM for calculations that run on the entire set.
 rm(dl, ratings, movies, test_index, temp, movielens, removed)
 ```
 
-Because of the length of the process, save and load are utilized to save data
-that took a long time to produce, for example, the edx and validation sets.
-
 ## Data Exploration
 The data is local and clean. Let's take a look.
 ```{r}
-head(edx)
 dim(edx)
+head(edx)
 ```
-From this, we see that the timestamp is saved as an int (the number of seconds
-since New Years 1970). The year a movie is released is included in its title.
-Genres are a string separated by |'s. There are 9000055 observations in the set,
+There are 9000055 observations in the set,
 (~90% of 10 million) with 6 variables each.
+The timestamp is saved as an int (the number of seconds
+since New Years 1970). The year a movie is released is included in its title.
+Genres are a string separated by |'s. 
 
 ### Categorical Data
 ```{R}
@@ -137,14 +143,14 @@ n_distinct(edx$title)
 n_distinct(edx$genres)
 edx %>%
   separate_rows(genres, sep = "\\|") %>%
-  group_by(genres) %>%
-  summarize(count = n())
+  distinct(genres) %>%
+  count() %>%
+  pull(n)
 ```
  
 There are 69878 distinct users. 10677 distinct movies, but only 10676 distinct
 movie titles. 797 distinct combined genres, but only 20 distinct individual
 genres.
-
 
 ### Distribution of Ratings
 ```{r}
@@ -155,7 +161,11 @@ edx %>%
   labs(title = "Rating Counts", x = "Rating", y = "Count") +
   geom_col(aes(x = rating, y = count)) +
   geom_vline(xintercept = mean(edx$rating), linetype = "dashed", color = "red") +
-  annotate("text", x = mean(edx$rating), y = 2.5 * 10 ^ 6, label = "Average\n", color = "red", angle = 90)
+  annotate("text", 
+           x = mean(edx$rating), 
+           y = 2.5 * 10 ^ 6, 
+           label = "Average\n", color = "red", 
+           angle = 90)
   
 mean(edx$rating)
 ```
@@ -171,14 +181,14 @@ edx <- edx %>%
 range(edx$date)
 ```
 Our observations range from January 9th, 1995 at 11:46 AM to January 5th, 2009,
-at 5:02 AM. Note that the date was saved a column in the data set, as it is often
-referenced and takes some time to run.
+at 5:02 AM. Note that the date was saved to a new column in the data set, as it 
+is often referenced and takes some time to run.
 
-
-For a similar reason, a column is added to the edx data set to store the week.
+For a similar reason, a column is added to the edx data set to round the date to 
+the nearest week.
 Below is a graph indicating the number of ratings the website received each week.
-Despite a week being an arbiturary unit to round to, it was valuable in building
-the model, show later.
+Despite a week being an arbitrary unit to round to, it was valuable in building
+the model, shown later.
 ```{r}
 edx <- edx %>%
   mutate(week = round_date(date, unit = "week")) %>%
@@ -196,10 +206,9 @@ edx %>%
   geom_line()
 ```
 The above graph reveals some interesting out-liers. There is a spike from 1996 to 1997 
-
 Then, a huge spike in late 1999, 2000, 2001, and 2005. What are these spikes?
 what movies are being rated during these spikes? What sort of users were being
-attracted to the site to submit these reviews? Data seems otherwise evenly 
+attracted to the site to submit these reviews? The data seem otherwise evenly 
 distributed.
 
 Now let us extract the release year from the title.
@@ -244,7 +253,7 @@ edx %>%
   scale_x_continuous(breaks = seq(0, 80, 10)) +
   geom_line()
 ```
-Most reviews within a few years of release. There also exist some 
+Most reviews occured within a few years of release. There also exist some 
 ratings that occurred before release, assumedly by critics or those with early 
 access to the movie.
 
@@ -269,13 +278,12 @@ edx %>%
 ```
 The number of ratings a movie receives appears to positively correlate with
 its rating. Most movies have received fewer than 5000 ratings.
-
 Additionally, there are very few movies with a significant number of reviews
 which average over 4.5 or below 1.5
 
 
 ### Number of User Ratings vs Average User Rating
-```{r}
+```{r, echo = FALSE}
 edx %>%
   group_by(userId) %>%
   summarize(n_ratings = n(), mean_rating = mean(rating)) %>%
@@ -295,11 +303,13 @@ much more variation.
 There are also some out-liers (n_ratings > 6000) that appear suspicious.
 
 ### Genre Effect
+
 For looking at the genre effect, we have to make some design decisions. Is it
 better to consider each genre as unique? Or is a combined genre to be considered
 distinct? For example, is an action|comedy just an action and a comedy, or does
 it become somethine else?
-```{r}
+
+```{r, echo = FALSE}
 p1 <- edx %>%
   group_by(genres) %>%
   summarize(avg_rating = mean(rating), count = n()) %>%
@@ -327,6 +337,7 @@ p2 <- edx %>%
 
 grid.arrange(p1, p2, ncol = 2)
 ```
+
 In the left graph, note how overlapping genres clump: Mystery/ Drama / Crime,
 Documentary / War.
 
@@ -342,7 +353,7 @@ rm(p1, p2)
 ```
 
 ### Timestamp vs Average Rating
-```{r}
+```{r, echo = FALSE}
 edx %>%
   group_by(week) %>%
   summarize(avg = mean(rating)) %>%
@@ -356,16 +367,17 @@ edx %>%
   geom_smooth(color = "red")
 ```
   
-This one is harder to track down. Ratings early in the existence of MovieLens
-skew very high. Likely because people interested in rating movies, and such
-that they would seek out new movie rating databases, are more likely to be
-interested in movies and thus rate them higher. Within a few month, the data
-fall back to a pattern. There is not much distance from the mean.
+This data is harder to nail down. Ratings early in the existence of MovieLens
+skew very high, likely because people interested in rating movies tend to be 
+movie fans and thus rate them higher. 
+Within a few months, the data
+fall back to a pattern. 
+There is not much distance from the mean.
 With the exception of 1997 to 1999, the data appears
-to be oddly periodic.
+to be periodic.
 
 ### Release Year vs Average Rating
-```{r}
+```{r, echo = FALSE}
 edx %>%
   group_by(release_year) %>%
   summarize(mean_rating = mean(rating)) %>%
@@ -376,14 +388,18 @@ edx %>%
        y = "Average Rating") +
   geom_smooth(color = "red")
 ```
-Here is revealed a near half-star increase in average rating for movies released around 1960. 
-However, being released after about 1985 seems to have a largely negative impact on average
-ratings for that year. Are we seeing a nostalgia effect? Is it that the movies users
-are still watching from the 1950 must be better? Does it have to do with the 
+The above graph reveals a near half-star increase in average rating for movies 
+released around 1950. 
+However, being released after about 1985 seems to have a largely negative impact 
+on a movie's average rating.
+Are we seeing a nostalgia effect? 
+Is it that the movies users
+are still watching from the 1950 must be better? 
+Does it have to do with the shear 
 quanitity of movies released in the last 30 years?
 
 ### Years Since Release vs Average Rating
-```{r}
+```{r, echo = FALSE}
 edx %>% 
   group_by(years_since_release) %>%
   summarize(mean_rating = mean(rating)) %>%
@@ -403,33 +419,30 @@ variable with which to make predictions.
 # Results
 Now that the exploratory analysis is complete, lets look at the impact
 incorporating various effects (or biases) will have on the resulting RMSE.
-
 A possible solution to constructing a recommendation system is to base it on a
-predictive model. We assume ratings from other users, the user's ratings of other
+predictive model.
+We assume ratings from other users, the user's own ratings of other
 movies, and more factors will impact a user's rating of a movie.
 
 Because we expect to find a single variable, rating, to be dependent on many
 other variables, multiple linear regression is a modelling approach worth 
 considering.
-
 However, because of the size and sparseness of the data set (most users have not
 rated most movies), the lm function will not be an effective strategy. 
 But we know that by
 sweeping the expected value from the data set, what remains can be treated as
 an effect on the data.
-
 In the following section, we will determine enough such effects to reach the
 target RMSE.
 
 ## Splitting EDX data into training and testing data
-Because later the effects will be regularized, and because an estimation of the
-final RMSE is important, the edx set is split into a train_set and a test_set.
-
-This will be done by creating a data partition with the caret package.
-
+We do not want to use the validation set to construct our model.
+To evaluate the efficacy of our model, we want to compare it to a test set.
+So, the edx set is split into a training data set and a test data set.
+Splitting the data is accomplished by creating a data partition with the caret 
+package.
 %20 of the edx data go to the test set.
-
-For reproduceability, I will set the seed to 1 (no rounding).
+For reproduceability, the seed is set to 1 again (no rounding).
 ```{r}
 set.seed(1)
 test_index <- createDataPartition(y = edx$rating, times = 1, p = 0.2, list = FALSE)
@@ -455,10 +468,8 @@ rm(test_index, temp, removed)
 ## Metric of Success
 
 For this analysis, the root mean squared estimate (RMSE) is be the metric
-to determine the effectiveness of the model. The goal is the minimize this
-value. Overtraining is undesirable, as it will not translate to the final validation.
-An RMSE of less than 0.86490 on the validation set is considered success.
-
+to determine the effectiveness of the model. The goal is the minimize the RMSE.
+Overtraining is undesirable, as it will not translate to the final validation.
 ```{r}
 RMSE <- function(test_ratings, predicted_ratings){
   sqrt(mean((test_ratings - predicted_ratings) ^ 2))
@@ -467,9 +478,8 @@ RMSE <- function(test_ratings, predicted_ratings){
 
 ## Base Line
 First, I would like to establish a base
-line so that improvements of the model are easier to gauge.
-
-This is based on 34.7.4 A First Model
+line to make improvements to the model easier to measure.
+The following is based on 34.7.4 from the test, A First Model.
 ```{r}
 mu_hat <- mean(train_set$rating)
 mu_hat
@@ -483,18 +493,15 @@ simply predicting unknown ratings as the average of all (training) ratings.
 Mostly I just like the sound of "Naive RMSE."
 ```{r}
 naive_rmse <- RMSE(test_set$rating, mu_hat)
-
-results <- tibble(method = "Average", RMSE = naive_rmse)
 naive_rmse
+results <- tibble(method = "Average", RMSE = naive_rmse)
 ```
 1.059904
 
 ## Modeling the Movie Effect
 Now, lets add the first effect to the model. 
-
 The mean will be swept out so that we are determining the effect only from the
 residuals. 
-
 The movie effect is based on the idea that if a given movie is rated highly, we
 can expect someone else to rate it highly, too.
 ```{r}
@@ -509,10 +516,9 @@ predicted_ratings <- mu_hat + test_set %>%
   pull(b_i)
 
 movie_effect_rmse <- RMSE(predicted_ratings, test_set$rating)
-
+movie_effect_rmse
 results <- results %>%
   add_row(method = "Movie Effect", RMSE = movie_effect_rmse)
-movie_effect_rmse
 ```
 With this one change, the RMSE has dropped over 0.1 to 0.94374. If every effect 
 impacted the  RMSE this much (it does not), then only a few effects would be 
@@ -538,14 +544,12 @@ predicted_ratings <- test_set %>%
   pull(pred)
 
 movie_user_effect_rmse <- RMSE(predicted_ratings, test_set$rating)
-
+movie_user_effect_rmse
 results <- results %>%
   add_row(method = "Movie + User Effect", RMSE = movie_user_effect_rmse)
-movie_user_effect_rmse
 ```
 An RMSE of 0.86593 shows a noticeable improvement, but
 suggests we may already be running into diminishing returns.
-
 It is unsurprising that we are able to make predictions of users based on
 previous ratings. 
 
@@ -555,19 +559,21 @@ What other ingredients might be added to push it over the edge?
 
 ## Choosing a Genre Effect
 It seems reasonable to assume, from the exploratory analysis, that genre
-will have an impact on average ratings of a movie. But much of this effect may
+will have an impact on average ratings of a movie. 
+But much of this effect may
 have been hidden within movie and user effects, so it is important to confirm
-the RMSE drops sufficiently with the addition of another effect. There are 
+the RMSE drops sufficiently with the addition of another effect. 
+There are 
 diminishing returns for each effect, so finding the right few to represent the
 model and draw conclusions is important.
 
 ### Combined Genres
-The genre data were presented as a string separated with |'s. The simplest model
+The genre data were presented as a string separated with |'s. 
+The simplest model
 would be to assume that each combination of genres can be considered its own 
-genre. That is, let us briefly assume that action|comedy and action|drama are 
-completely orthoganal predictors.
-
-We could then build this model, following the approach of the movie and user effects.
+genre. 
+That is, let us briefly assume that action|comedy and action|drama are 
+completely orthogonal predictors.
 
 ```{r}
 # Mean rating of each genre after centering on the mean and sweeping movie 
@@ -587,13 +593,15 @@ predicted_ratings <- test_set %>%
   pull(pred)
 
 movie_user_genre_effect_rmse <- RMSE(predicted_ratings, test_set$rating)
+movie_user_genre_effect_rmse
 results <- results %>%
   add_row(method = "Movie + User + Genres Effect", RMSE = movie_user_genre_effect_rmse)
-movie_user_genre_effect_rmse
 ```
 
 Can we do better with a more complex model?
+
 ### Genre Splitting
+
 The following code takes awhile to process because of the string operations, but
 it gives us a chance to see what effect each individual genre has.
 ```{r}
@@ -640,18 +648,18 @@ rm(split_genre_avgs, combined_genre_avgs)
 
 ## Effects of Timing
 Thus far, the factors incorporated into the multiple linear regression model have
-been what might seem intuitive. They have also been categorical.
-
+been what might seem intuitive. 
+They have also been categorical.
 But we are provided far more data than movie,
-user, and genre in a rating. We saw in our exploration that there seems to be
+user, and genre in a rating. 
+We saw in our exploration that there seems to be
 an effect on ratings based on when they are made.
 
 ### Week of Review
 Let us start by teasing out any improvement on our model based on when a movie
 was rated and performing a time series analysis.
-
-We saw in exploration that most weeks have plenty of reviews, so again we
-will group the data by the week of the review.
+We saw in exploration that most weeks have plenty of reviews, so we
+again group the data by the week of the review.
 ```{r}
 week_avgs <- train_set %>%
   left_join(movie_avgs, by = "movieId") %>%
@@ -695,7 +703,7 @@ week_avgs <- week_avgs %>%
 week_avgs %>%
   ggplot(aes(x = week)) +
   ylim(-0.15, 0.15) +
-  geom_point(aes(y = b_d), alpha = 0.25) +
+  geom_point(aes(y = b_d, color = "observed"), alpha = 0.25) +
   geom_line(aes(y = fit_glm, color = "glm")) +
   geom_line(aes(y = fit_knn, color = "knn")) +
   geom_line(aes(y = fit_rpart, color = "rpart")) +
@@ -704,7 +712,7 @@ week_avgs %>%
        x = "Week", 
        y = "Effect") +
   scale_colour_manual(name = "Fit",
-      values = c(glm = "red", knn = "blue", rpart = "purple", rf = "orange"))
+      values = c(observed = "black", glm = "red", knn = "blue", rpart = "purple", rf = "orange"))
 ```
 ```{r echo = FALSE, results = "hide"}
 rm(train_glm, train_knn, train_rpart, train_rf)
@@ -775,10 +783,10 @@ year_avgs <- year_avgs %>%
 year_avgs %>%
   ggplot(aes(x = release_year)) +
   ylim(-0.1, 0.2) +
-  geom_line(aes(y = b_y, color = "observed"), size = 0.75) + 
+  geom_point(aes(y = b_y, color = "observed"), alpha = 0.5) + 
   geom_line(aes(y = fit_loess, color = "loess")) +
   geom_line(aes(y = fit_knn, color = "knn")) +
-  geom_line(aes(y = fit_rf, color = "rf"), size = 0.65) +
+  geom_line(aes(y = fit_rf, color = "rf")) +
   labs(title = "Release Year Effect",
        x = "Release Year",
        y = "Effect") +
@@ -846,7 +854,7 @@ wait_avgs <-
   summarize(b_w = mean(rating - mu_hat - b_i - b_u - b_g - b_d - b_y))
 ```
 
-Historically, only the random forest method has been the best at producing a
+Previously, the random forest method has been the best at producing a
 smoothed prediction, so only random forest will be used here to compare.
 ```{r}
 set.seed(1)
@@ -909,32 +917,32 @@ Below, we see the effect of merely clamping.
 predicted_ratings <- predicted_ratings$pred
 predicted_ratings[predicted_ratings > 5] <- 5
 predicted_ratings[predicted_ratings < 1] <- 1
+
 clamped_rmse <- RMSE(predicted_ratings, test_set$rating)
+clamped_rmse
 results <- results %>%
   add_row(method = "Clamping", RMSE = clamped_rmse)
-clamped_rmse
 ```
 
 Wow! An improvement. We have even surpassed the target RMSE.
-
 This is not surprising, as there were likely many predictions
 below 1 and above 5 that could not be "more right", only more wrong than they
 already were. In the
 context of a recommendation system, clamping does not make much sense. If we
 think a user would rate a movie higher than 5 (or lower than 1) if they could,
 then we are that much more confident in our recommendation.
-
 However, in the context of trying to reach a target RMSE, as in this problem,
 clamping to reduce error makes perfect sense.
 
 Following this, does it make sense to round results to the nearest half-integer
 as well?
+
 ```{r}
 rounded_ratings <- 0.5 * round(2 * predicted_ratings)
 rounded_rmse <- RMSE(rounded_ratings, test_set$rating)
+rounded_rmse
 results <- results %>%
   add_row(method = "Rounding", RMSE = rounded_rmse)
-rounded_rmse
 ```
 Oof, not the direction that we want to go. But wait! We saw in early exploratory
 analysis that users are far more likely to rate on whole-number values. Can we
@@ -960,12 +968,12 @@ significantly increases our error. Better to leave this out of the model.
 ## Regularization
 Nothing has yet been added to the model to account for movies and users with a
 low number of overall ratings.
-
 We saw in our data exploration that the numbers of ratings a movie received or a
 user submits can vary greatly. 
 
-We can correct for that by going back through our model and adding a lambda
-value to the denominator of the mean. That is, instead of dividing by the number
+We can correct the high effect of infrequently rated movies by adding a lambda 
+value to our model in the denominator of the mean. 
+That is, instead of dividing by the number
 of observations, we add a penalty term that will vanish for a high number of 
 observations and force a lower effect based on fewer observations.
 ```{r}
@@ -1048,15 +1056,16 @@ results <- results %>%
   add_row(method = "Regularized Effects", RMSE = min(rmses))
 ```
 The RMSE bottoms out around 4.5. The minimum is 0.86412, well below the
-target RMSE. Over-training is a concern, because of the number of factors used 
+target RMSE. Overall, this is the improvement we have seen so far to the RMSE:
+```{r, echo = FALSE}
+knitr::kable(results)
+```
+
+Over-training is a concern, because of the number of factors used 
 and the use of 
 cross-validation to tune regularization. Let us see how it checks out with the
 validation set that was set aside at the beginning of the analysis.
 
-
-```{r, echo = FALSE}
-knitr::kable(results)
-```
 
 ## Validation
 
@@ -1139,44 +1148,33 @@ RMSE(predicted_ratings, validation$rating)
 We have flown below the target RMSE! Success!
 
 
-#Conclusion
+# Conclusion
 In this report a data set from MovieLens containing 10 million movie ratings was
 downloaded and cleaned.
-
 Exploratory analysis was performed to evaluate possible effects to include in a
 predictive model.
-
 A multiple linear regression analysis was applied to develop the model. 
-
 The model incorporated the movie effect, the user effect,
 the combined-genre effect, the date effect (rounded to weeks), the release date
 effect (rounded to years), and the effect from the time between release and 
 review (rounded to year).
-
 The final model was able to predict unknown user ratings with a root mean squared
 error of less than 0.86490 and got as low as 0.86365 on a validation set.
 
 
 Despite the success of the model, it appears that additional effects result in
 diminishing returns.
-
 It is possible that other high-impact effects have simply not yet been sussed out
 of the data. 
-
-However, it is outside the scope of this analysis to exhaust exploration of all 
-effects.
-
+However, it is outside the scope of this analysis to perform an exhaustive
+exploration of alleffects.
 
 Rather, it would be better to trust the data itself and perform principle 
 component analysis in the form of single value decomposition (SVD).
-
 The flexible, math - based approach of SVD would results in a list of effects 
 already ordered in their effectiveness.
-
-From there, enough effects could be applied to the model until over-fitting
-is observed.
+Enough effects could be applied to the model until over-fitting is observed.
 
 However, the shear size of the 10 million reviews data set, with all its variable,
 requires a special approach to SVD.
-
 Examples of specialized SVD may be found online, in particular funkSVD.
