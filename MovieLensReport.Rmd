@@ -10,7 +10,7 @@ knitr::opts_chunk$set(
   warning = FALSE,
   tidy = TRUE,
   cahe = TRUE, # Set to FALSE to conserve memory
-  eval = FALSE # Set to TRUE for code to actually rune
+  eval = TRUE # Set to TRUE for code to actually rune
 )
 ```
 
@@ -970,16 +970,16 @@ occur at +/- 0.25. Lets see if there is any improvement as we get farther away.
 
 ```{r}
 rounding_factor <- seq(0, 0.3, 0.01)
-rounding_rmse <- sapply(rounding_factor, function(r){
+rounded_rmse <- sapply(rounding_factor, function(r){
   base_prediction <- round(predicted_ratings)
   dec <- predicted_ratings - base_prediction
   base_prediction[dec > r] <- base_prediction[dec > r] + 0.5
   base_prediction[dec < -r] <- base_prediction[dec < - r] - 0.5
   return(RMSE(base_prediction, test_set$rating))
 })
-min(rounded)
-rounding_factor[which.min(rounded)]
-qplot(rounding_factor, rounding_rmse)
+qplot(rounding_factor, rounded_rmse)
+min(rounded_rmse)
+rounding_factor[which.min(rounded_rmse)]
 ```
 We are already at the best as it can possibly be with basic rounding, and that
 significantly increases our error. Better to leave this out of the model.
@@ -1094,8 +1094,6 @@ the release year effect, and the difference between release and review effect in
 years. All of these effects will be regularized with the previously determined
 lambda (4.5), and the resulting predictions will be clamped between 1 and 5.
 ```{r}
-#FINAL TEST
-#
 lambda <- 4.5
 # Movie effect
 b_i <- edx %>%
